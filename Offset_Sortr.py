@@ -5,7 +5,6 @@ import funcs
 from PyPDF2 import PdfReader
 from example import directories
 
-
 COLOR_4_0 = ['1+0', '4+0']
 COLOR_4_4 = ['1+1', '4+4']
 VILETI = 4
@@ -61,7 +60,7 @@ def check_colorify(color: str, pages: int) -> bool:
     """ Проверка цветности документа """
 
     if color in COLOR_4_4 and pages == 2 or \
-       color in COLOR_4_0 and pages == 1:
+            color in COLOR_4_0 and pages == 1:
         return True
 
     return False
@@ -99,70 +98,65 @@ all_podpis_sizes = [product_size_to_mm(file['podpis']) for file in directories.g
 error = directories['error files']
 other = directories['other files']
 
-
 # Из указанной директории проанализировать все файлы
 input_dir = input('Select folder:\n')
 
+try:
+    os.chdir(input_dir)
 
-# try:
-os.chdir(input_dir)
+    for filename in funcs.get_all_filenames_in_directory(input_dir):
 
-for filename in funcs.get_all_filenames_in_directory(input_dir):
+        product_size, color = get_params_from_filename(filename)
+        product_size_mm = product_size_to_mm(product_size)
 
-    product_size, color = get_params_from_filename(filename)
-    product_size_mm = product_size_to_mm(product_size)
+        pdf_file = PdfReader(filename)
+        pages = len(pdf_file.pages)
 
-    pdf_file = PdfReader(filename)
-    pages = len(pdf_file.pages)
+        if product_size_mm not in all_podpis_sizes:
 
-    if product_size_mm not in all_podpis_sizes:
+            if not check_colorify(color, pages):
+                print(f'[{funcs.get_current_time()}]   {filename}\nЦветность документа не соответствует подписи.\n')
+                replacer(filename, os.path.join(error, filename))
 
-        if not check_colorify(color, pages):
-            print(f'[{funcs.get_current_time()}]   {filename}\nЦветность документа не соответствует подписи.\n')
-            replacer(filename, os.path.join(error, filename))
+            elif not funcs.CropBox_equal_product_size(pdf_file, product_size):
+                print(f'''[{funcs.get_current_time()}]   {filename}
+                \rCropBox документа не соответствует размеру подписи {product_size}.\n''')
+                replacer(filename, os.path.join(error, filename))
 
-        elif not funcs.CropBox_equal_product_size(pdf_file, product_size):
-            print(f'''[{funcs.get_current_time()}]   {filename}
-            \rCropBox документа не соответствует размеру подписи {product_size}.\n''')
-            replacer(filename, os.path.join(error, filename))
+            elif not (funcs.all_pages_are_landscape(pdf_file, product_size) or
+                      funcs.all_pages_are_portrait(pdf_file, product_size)):
+                print(f'''[{funcs.get_current_time()}]   {filename}
+                \rСтраницы документа имеют разную ориентацию.\n''')
+                replacer(filename, os.path.join(error, filename))
 
-        elif not (funcs.all_pages_are_landscape(pdf_file, product_size) or funcs.all_pages_are_portrait(pdf_file, product_size)):
-            print(f'''[{funcs.get_current_time()}]   {filename}
-            \rСтраницы документа имеют разную ориентацию.\n''')
-            replacer(filename, os.path.join(error, filename))
-
-        else:
-            replacer(filename, os.path.join(other, filename))
-
-    else:
-        if not check_colorify(color, pages):
-            print(f'[{funcs.get_current_time()}]   {filename}\nЦветность документа не соответствует подписи.\n')
-            replacer(filename, os.path.join(error, filename))
-
-        elif not CropBox_equal_special_product_size(pdf_file, product_size):
-            print(f'''[{funcs.get_current_time()}]   {filename}
-            \rCropBox документа не соответствует размеру подписи {product_size}.\n''')
-            replacer(filename, os.path.join(error, filename))
-
-        elif not (funcs.all_pages_are_landscape(pdf_file, product_size) or funcs.all_pages_are_portrait(pdf_file, product_size)):
-            print(f'''[{funcs.get_current_time()}]   {filename}
-            \rСтраницы документа имеют разную ориентацию.\n''')
-            replacer(filename, os.path.join(error, filename))
+            else:
+                replacer(filename, os.path.join(other, filename))
 
         else:
-            destination = [files['folder'] for files in directories['special files'] if product_size_to_mm(files['podpis']) == product_size_mm]
-            print(destination)
-            replacer(filename, os.path.join(destination[0], filename))
+            if not check_colorify(color, pages):
+                print(f'[{funcs.get_current_time()}]   {filename}\nЦветность документа не соответствует подписи.\n')
+                replacer(filename, os.path.join(error, filename))
 
+            elif not CropBox_equal_special_product_size(pdf_file, product_size):
+                print(f'''[{funcs.get_current_time()}]   {filename}
+                \rCropBox документа не соответствует размеру подписи {product_size}.\n''')
+                replacer(filename, os.path.join(error, filename))
 
-        # Сначала выполнить все проверки ПДФ файла, затем направить его в соответствующую папку.
+            elif not (funcs.all_pages_are_landscape(pdf_file, product_size) or
+                      funcs.all_pages_are_portrait(pdf_file, product_size)):
+                print(f'''[{funcs.get_current_time()}]   {filename}
+                \rСтраницы документа имеют разную ориентацию.\n''')
+                replacer(filename, os.path.join(error, filename))
 
-# except Exception as E:
-#     print(E)
-# finally:
-#     time.sleep(5)
+            else:
+                destination = ''
+                for files in directories['special files']:
+                    if product_size_to_mm(files['podpis']) == product_size_mm:
+                        destination = files['folder']
 
+                replacer(filename, os.path.join(destination[0], filename))
 
+            # Сначала выполнить все проверки ПДФ файла, затем направить его в соответствующую папку.
 
-
-
+except Exception as E:
+    print(E)
