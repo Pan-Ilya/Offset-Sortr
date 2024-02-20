@@ -3,7 +3,7 @@ import re
 import shutil
 import funcs
 from PyPDF2 import PdfReader
-from example import directories
+from config import directories
 
 COLOR_4_0 = ['1+0', '4+0']
 COLOR_4_4 = ['1+1', '4+4']
