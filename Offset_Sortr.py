@@ -2,10 +2,13 @@ import os
 import re
 import shutil
 import time
+
+import change_pdf_size
 import funcs
 import json
-from PyPDF2 import PdfReader
-from PyPDF2.errors import PdfReadError
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
+import traceback
 
 # from config import data
 
@@ -14,12 +17,15 @@ COLOR_4_4 = ['1+1', '4+4']
 VILETI = 4
 
 
-def product_size_to_mm(product_size: str) -> list[int]:
+def product_size_to_mm(product_size: str|list[int], reverse:bool=False) -> str|list[int]:
     """ Возвращает список целочисленных значений ВхШ страницы документа. Результат отсортирован по возрастанию. """
 
-    product_size = ''.join('x' if char.isalpha() else char for char in product_size)
+    if not reverse and isinstance(product_size, str):
+        product_size = ''.join('x' if char.isalpha() else char for char in product_size)
+        return sorted([int(size) for size in product_size.split('x')])
 
-    return sorted([int(size) for size in product_size.split('x')])
+    elif reverse and isinstance(product_size, list):
+        return 'x'.join(str(x) for x in product_size)
 
 
 with open('config.json', 'r', encoding='utf-8-sig') as file:
@@ -60,14 +66,18 @@ def get_params_from_filename(filename: str) -> list[str | int] | bool:
      Пример имени файла:
      02-17_lider_pp_1146806_210x98_4+4_6v_130_1000.pdf """
 
+    # offset_filename_pattern = r'(?i)(?P<size>\d{2,}[xх]\d{2,}).*?' \
+    #                           r'(?P<color>\d\+\d)'
+
     offset_filename_pattern = r'(?i)(?P<size>\d{2,}[xх]\d{2,}).*?' \
-                              r'(?P<color>\d\+\d)'
+                              r'(?P<color>\d\+\d).*?' \
+                              r'(?P<density>\d{2,}(?:[a-z])*)'
 
     result = re.findall(offset_filename_pattern, filename)
 
     if result:
-        product_size, color = result[0]
-        return [product_size, color]
+        product_size, color, density = result[0]
+        return [product_size, color, density]
 
     return False
 
@@ -127,7 +137,7 @@ while True:
 
             # Сначала выполнить все проверки ПДФ файла, затем направить его в соответствующую папку.
 
-            product_size, color = get_params_from_filename(filename)
+            product_size, color, density = get_params_from_filename(filename)
             product_size_mm = product_size_to_mm(product_size)
 
             FILE = False
@@ -167,7 +177,37 @@ while True:
                 continue
 
             # Проверка для файлов ==================================================================================
-            if FILE and product_size_mm not in all_podpis_sizes:
+
+            # Отдельно для Офсет 80
+            if FILE and density == '80':
+
+                if not check_colorify(color, pages):
+                    print(f'[{funcs.get_current_time()}]   {filename}\nЦветность документа не соответствует подписи.\n')
+                    replacer(filename, os.path.join(error, filename))
+
+                elif not funcs.CropBox_equal_product_size(pdf_file, product_size):
+                    print(f'''[{funcs.get_current_time()}]   {filename}
+                    \rCropBox документа не соответствует размеру подписи {product_size}.\n''')
+                    replacer(filename, os.path.join(error, filename))
+
+                elif not (funcs.all_pages_are_landscape(pdf_file, product_size) or
+                          funcs.all_pages_are_portrait(pdf_file, product_size)):
+                    print(f'''[{funcs.get_current_time()}]   {filename}
+                    \rСтраницы документа имеют разную ориентацию.\n''')
+                    replacer(filename, os.path.join(error, filename))
+
+                else:
+                    new_size_mm = [funcs.formats_80.get(x, x) for x in product_size_mm]
+                    h, w = new_size_mm
+                    new_size = product_size_to_mm(new_size_mm, reverse=True)
+                    result_name = result_name.replace(product_size, new_size)
+
+                    change_pdf_size.resize_pdf_mm(filename, filename, w + 4, h + 4)
+                    print(f'Поймал с 80ку  - {result_name}\n')
+                    replacer(filename, os.path.join(other, result_name))
+
+
+            elif FILE and product_size_mm not in all_podpis_sizes:
 
                 if not check_colorify(color, pages):
                     print(f'[{funcs.get_current_time()}]   {filename}\nЦветность документа не соответствует подписи.\n')
@@ -294,6 +334,7 @@ while True:
     except Exception as E:
         print(E)
         print(f'[{funcs.get_current_time()}]   Произошла неожиданная ошибка. Повторяю попытку.')
+        # traceback.print_exc()
 
     finally:
         time.sleep(3)

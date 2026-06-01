@@ -2,7 +2,7 @@
 import re
 import shutil
 import time
-from PyPDF2 import PdfReader, PageObject
+from pypdf import PdfReader, PageObject
 from decimal import Decimal
 from typing import Callable, Tuple, Any
 
@@ -31,6 +31,15 @@ VILETI = 4
 ALLOWED_VIZ_SIZES = {
     'file_signature': ['89x49', '49x89', '90x50', '50x90'],
     'size_value': [[53, 93], [54, 94]],
+}
+
+formats_80 = {
+    210: 208,
+    148:  147,
+    105: 102,
+    104: 102,
+    100: 98,
+    68: 66
 }
 
 
@@ -142,7 +151,7 @@ def check_colorify(f_colorify: str, f_quantity: int, pages: int) -> bool:
 def decimal_to_mm(size: Decimal) -> int:
     """ Преобразуем inch в целочисленное значение метрической системы. """
 
-    return int(size // Decimal(2.83))
+    return int(Decimal(size) // Decimal(2.83))
 
 
 def product_size_to_mm(product_size: str) -> list[int]:
